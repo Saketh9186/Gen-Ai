@@ -60,7 +60,7 @@ It provides a clean, chat-based interface for users to browse the menu and book 
 
 💬 Interaction Examples
 
-### Booking a Table
+### Booking a Tabl
 
 ```text
 User: I want to book a table
