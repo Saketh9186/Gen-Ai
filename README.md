@@ -59,28 +59,28 @@ It provides a clean, chat-based interface for users to browse the menu and book 
 
 ## ▶️ Running the Project
 
-### Option 1: Open Directly
-# Simply open the file
-index.html
+**Simply open the file:** index.html
 
-
-⸻
+---
 
 💬 Interaction Examples
 
 ### Booking a Table
 
+```text
 User: I want to book a table
 Bot: Sure! For which date?
 User: 12/5/26
 Bot: Great! How many guests?
 User: 4
 Bot: Perfect. Shall I confirm your booking?
+```
 
 ---
 
-### 📂 Project Structure
+## 📂 Project Structure
 
+```text
 project/
 ├── public/
 │   ├── bot.png
@@ -90,3 +90,4 @@ project/
 ├── main.js
 ├── style.css
 └── README.md
+```
