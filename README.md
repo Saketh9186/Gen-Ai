@@ -4,7 +4,8 @@ Spice & Soul Chatbot is a friendly, conversational restaurant reservation assist
 It provides a clean, chat-based interface for users to browse the menu and book tables smoothly — **entirely on the frontend**.
 
 ![Status](https://img.shields.io/badge/status-active-brightgreen)
-![Frontend](https://img.shields.io/badge/frontend-only-blue)
+![HTML](https://img.shields.io/badge/HTML5-orange)
+![CSS](https://img.shields.io/badge/CSS3-blue)
 ![JavaScript](https://img.shields.io/badge/javascript-vanilla-yellow)
 
 
@@ -60,7 +61,7 @@ It provides a clean, chat-based interface for users to browse the menu and book 
 
 💬 Interaction Examples
 
-### Booking
+### Booking a Table
 
 ```text
 User: I want to book a table
