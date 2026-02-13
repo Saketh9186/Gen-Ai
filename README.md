@@ -73,7 +73,7 @@ Bot: Perfect. Shall I confirm your booking?
 ```
 
 
-## 📂 Project Structure
+## 📂 Project Structure 
 
 ```text
 project/
