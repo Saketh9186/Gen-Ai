@@ -7,7 +7,6 @@ It provides a clean, chat-based interface for users to browse the menu and book 
 ![Frontend](https://img.shields.io/badge/frontend-only-blue)
 ![JavaScript](https://img.shields.io/badge/javascript-vanilla-yellow)
 
----
 
 ## ✨ Features
 
@@ -40,7 +39,6 @@ It provides a clean, chat-based interface for users to browse the menu and book 
   - Random table number assignment
   - Confirmation shown in chat (email/SMS simulated)
 
----
 
 ## 🛠️ Technology Stack
 
@@ -48,20 +46,17 @@ It provides a clean, chat-based interface for users to browse the menu and book 
 - CSS3
 - Vanilla JavaScript
 
----
 
 ## 🚀 Getting Started
 
 ### Prerequisites
 - Any modern web browser
 
----
 
 ## ▶️ Running the Project
 
 **Simply open the file:** index.html
 
----
 
 💬 Interaction Examples
 
@@ -76,7 +71,6 @@ User: 4
 Bot: Perfect. Shall I confirm your booking?
 ```
 
----
 
 ## 📂 Project Structure
 
@@ -91,3 +85,5 @@ project/
 ├── style.css
 └── README.md
 ```
+
+---
