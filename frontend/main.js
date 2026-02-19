@@ -52,11 +52,30 @@ document.addEventListener("DOMContentLoaded", function () {
         <div class="admin-header">
           <h2>Table Management</h2>
           <input type="date" id="adminDateInput" class="admin-date-input">
+          <div class="admin-date-actions">
+            <button class="waitlist-btn" id="viewWaitlistBtn">View Waitlist</button>
+            <button class="waitlist-btn" id="viewTablesBtn" style="display:none; background:#e8a55c;">View Tables</button>
+          </div>
           <button class="close-btn" id="closeAdminBtn">✕</button>
         </div>
         <div class="admin-content" id="adminContent">
           <div class="tables-grid" id="tablesGrid"></div>
+          
+          <div id="waitlistView" style="display:none;">
+            <h3>Waitlist</h3>
+            <div id="waitlistContent"></div>
+          </div>
         </div>
+      </div>
+      
+      <!-- Table Details Modal -->
+      <div class="details-overlay" id="detailsOverlay"></div>
+      <div class="details-panel" id="detailsPanel">
+        <div class="details-header">
+          <h3 id="detailsTitle">Table Details</h3>
+          <button class="close-btn" id="closeDetailsBtn">✕</button>
+        </div>
+        <div class="details-content" id="detailsContent"></div>
       </div>
     </div>
   `;
@@ -390,7 +409,12 @@ document.addEventListener("DOMContentLoaded", function () {
       var dd = parts[0];
       var dateStr = yyyy + '-' + mm + '-' + dd;
 
-      var allocatedTable = allocateTable(peopleCount, bookingData.name, dateStr);
+      var yyyy = '20' + parts[2];
+      var mm = parts[1];
+      var dd = parts[0];
+      var dateStr = yyyy + '-' + mm + '-' + dd;
+
+      var allocatedTable = allocateTable(peopleCount, bookingData.name, dateStr, bookingData.time, bookingData);
 
       if (allocatedTable) {
         addMessage(
@@ -817,6 +841,17 @@ document.addEventListener("DOMContentLoaded", function () {
       } else if (lowerInput === 'yes') {
         setTimeout(function () {
           addMessage('✅ You’ve been added to the waitlist. We’ll notify you as soon as a table becomes available.', 'bot');
+
+          // Add to waitlist logic
+          // Need to reconstruct dateStr from bookingData.date (DD-MM-YY)
+          var parts = bookingData.date.split('-');
+          var yyyy = '20' + parts[2];
+          var mm = parts[1];
+          var dd = parts[0];
+          var dateStr = yyyy + '-' + mm + '-' + dd;
+
+          addToWaitlist(dateStr, bookingData);
+
           // RESTART LOOP
           setTimeout(function () {
             steps.push({ key: 'choice', question: 'Is there anything else I can help you with?' });
@@ -1006,8 +1041,11 @@ document.addEventListener("DOMContentLoaded", function () {
     { id: 12, seats: 2 }
   ];
 
-  // Bookings Store: mapping YYYY-MM-DD -> { tableId: { bookedBy: "Name" } }
+  // Bookings Store: mapping YYYY-MM-DD -> { tableId: [ { time, duration, bookedBy, email, phone, dietary } ] }
   var bookings = {};
+
+  // Waitlist Store: mapping YYYY-MM-DD -> [ { name, email, phone, people, time, dietary } ]
+  var waitlist = {};
 
   // Formatter for Date Input (YYYY-MM-DD)
   function getFormattedDate(dateObj) {
@@ -1034,11 +1072,16 @@ document.addEventListener("DOMContentLoaded", function () {
 
     tablesConfig.forEach(function (table) {
       // Check if this table is booked for this date
-      var bookingInfo = daysBookings[table.id]; // undefined if free
-      var isBooked = !!bookingInfo;
+      var tableBookings = daysBookings[table.id] || [];
+      var isOccupied = tableBookings.length > 0;
 
       var card = document.createElement('div');
-      card.className = 'table-card ' + (isBooked ? 'occupied' : 'free');
+      card.className = 'table-card ' + (isOccupied ? 'occupied' : 'free');
+      card.style.cursor = 'pointer';
+
+      card.onclick = function () {
+        openTableDetails(table.id, dateStr);
+      };
 
       var num = document.createElement('div');
       num.className = 'table-number';
@@ -1049,30 +1092,66 @@ document.addEventListener("DOMContentLoaded", function () {
       seats.textContent = table.seats + ' Seater';
 
       var status = document.createElement('div');
-      status.className = 'table-status ' + (isBooked ? 'status-occupied' : 'status-free');
-      status.textContent = isBooked ? 'Occupied' : 'Available';
+      status.className = 'table-status ' + (isOccupied ? 'status-occupied' : 'status-free');
+      status.textContent = isOccupied ? tableBookings.length + ' Bookings' : 'Available';
 
       card.appendChild(num);
       card.appendChild(seats);
       card.appendChild(status);
 
-      if (isBooked) {
-        var guest = document.createElement('div');
-        guest.style.fontSize = '0.8rem';
-        guest.style.marginTop = '8px';
-        guest.textContent = 'Booked by: ' + bookingInfo.bookedBy;
-        card.appendChild(guest);
+      if (isOccupied) {
+        var bookingList = document.createElement('div');
+        bookingList.style.fontSize = '0.8rem';
+        bookingList.style.marginTop = '8px';
+
+        tableBookings.forEach(function (b) {
+          var div = document.createElement('div');
+          div.textContent = b.time + ' - ' + b.bookedBy;
+          bookingList.appendChild(div);
+        });
+
+        card.appendChild(bookingList);
       }
 
       grid.appendChild(card);
     });
   }
 
-  function allocateTable(people, name, dateStr) {
+  function isTimeSlotAvailable(existingBookings, requestedTimeStr, durationHours) {
+    if (!existingBookings || existingBookings.length === 0) return true;
+
+    var reqParts = requestedTimeStr.split(':');
+    var reqH = parseInt(reqParts[0], 10);
+    var reqM = parseInt(reqParts[1], 10);
+    var reqStart = reqH * 60 + reqM;
+    var reqEnd = reqStart + (durationHours * 60);
+
+    for (var i = 0; i < existingBookings.length; i++) {
+      var booking = existingBookings[i];
+      var bookParts = booking.time.split(':');
+      var bookH = parseInt(bookParts[0], 10);
+      var bookM = parseInt(bookParts[1], 10);
+      var bookStart = bookH * 60 + bookM;
+      var bookEnd = bookStart + (booking.duration * 60);
+
+      // Check overlap: (StartA < EndB) and (EndA > StartB)
+      if (reqStart < bookEnd && reqEnd > bookStart) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function allocateTable(people, name, dateStr, timeStr, fullData) {
     if (!dateStr) dateStr = getFormattedDate(); // Default to today if missing
+    if (!timeStr) timeStr = "12:00"; // Default fallback
 
     // Get current bookings for this date to check availability
-    var daysBookings = bookings[dateStr] || {};
+    // bookings[dateStr] is now { tableId: [Array of bookings] }
+    if (!bookings[dateStr]) {
+      bookings[dateStr] = {};
+    }
+    var daysBookings = bookings[dateStr];
 
     // Sort tables by seat capacity (ascending) to find smallest fitting first
     var sortedTables = tablesConfig.slice().sort((a, b) => a.seats - b.seats);
@@ -1081,18 +1160,31 @@ document.addEventListener("DOMContentLoaded", function () {
 
     for (var i = 0; i < sortedTables.length; i++) {
       var t = sortedTables[i];
-      // Check if table is free on THIS date
-      var isFree = !daysBookings[t.id];
 
-      if (isFree && t.seats >= people) {
+      // 1. Capacity check
+      if (t.seats < people) continue;
+
+      // 2. Availability check
+      // Get existing bookings for this table on this date
+      var apiBookings = daysBookings[t.id] || [];
+
+      if (isTimeSlotAvailable(apiBookings, timeStr, 2)) {
         // Found a table!
-        // Initialize date entry if missing
-        if (!bookings[dateStr]) {
-          bookings[dateStr] = {};
+        if (!daysBookings[t.id]) {
+          daysBookings[t.id] = [];
         }
 
         // Save booking
-        bookings[dateStr][t.id] = { bookedBy: name };
+        daysBookings[t.id].push({
+          time: timeStr,
+          duration: 2, // Fixed 2 hours for now
+          bookedBy: name,
+          email: fullData ? fullData.email : '',
+          phone: fullData ? fullData.phone : '',
+          people: people,
+          dietary: fullData ? fullData.dietary : ''
+        });
+
         assignedTable = t;
         break;
       }
@@ -1118,9 +1210,192 @@ document.addEventListener("DOMContentLoaded", function () {
     document.getElementById('adminPanel').classList.remove('active');
   });
 
-  document.getElementById('adminOverlay').addEventListener('click', function () {
-    document.getElementById('adminOverlay').classList.remove('active');
-    document.getElementById('adminPanel').classList.remove('active');
+  document.getElementById('adminPanel').classList.remove('active');
+
+  // --- NEW ADMIN FEATURES ---
+
+  function addToWaitlist(dateStr, data) {
+    if (!waitlist[dateStr]) {
+      waitlist[dateStr] = [];
+    }
+    waitlist[dateStr].push(data);
+  }
+
+  function renderWaitlist(dateStr) {
+    if (!dateStr) dateStr = adminDateInput.value || getFormattedDate();
+    var list = waitlist[dateStr] || [];
+    var container = document.getElementById('waitlistContent');
+    container.innerHTML = '';
+
+    if (list.length === 0) {
+      container.innerHTML = '<p>No one on the waitlist for this date.</p>';
+      return;
+    }
+
+    list.forEach(function (item) {
+      var div = document.createElement('div');
+      div.className = 'waitlist-item';
+
+      var header = document.createElement('div');
+      header.className = 'waitlist-header';
+      header.innerHTML = '<span>' + item.name + ' (' + item.people + 'pp)</span> <span>' + item.time + '</span>';
+
+      var contact = document.createElement('div');
+      contact.textContent = item.phone + ' | ' + item.email;
+
+      div.appendChild(header);
+      div.appendChild(contact);
+      container.appendChild(div);
+    });
+  }
+
+  function openTableDetails(tableId, dateStr) {
+    document.getElementById('detailsOverlay').classList.add('active');
+    document.getElementById('detailsPanel').classList.add('active');
+
+    var table = tablesConfig.find(t => t.id === tableId);
+    document.getElementById('detailsTitle').textContent = 'Table ' + tableId + ' (' + table.seats + ' Seater)';
+
+    renderBookingList(tableId, dateStr);
+  }
+
+  function renderBookingList(tableId, dateStr) {
+    var content = document.getElementById('detailsContent');
+    content.innerHTML = '';
+
+    var daysBookings = bookings[dateStr] || {};
+    var tableBookings = daysBookings[tableId] || [];
+
+    if (tableBookings.length === 0) {
+      content.innerHTML = '<p>No bookings for this table on this date.</p>';
+      return;
+    }
+
+    // Sort by time
+    tableBookings.sort((a, b) => {
+      return parseInt(a.time.replace(':', '')) - parseInt(b.time.replace(':', ''));
+    });
+
+    tableBookings.forEach(function (b, index) {
+      var item = document.createElement('div');
+      item.className = 'booking-item';
+
+      var header = document.createElement('div');
+      header.className = 'booking-header';
+
+      var time = document.createElement('div');
+      time.className = 'booking-time';
+      time.textContent = b.time + ' (' + b.duration + 'h)';
+
+      var actions = document.createElement('div');
+      actions.className = 'booking-actions';
+
+      var editBtn = document.createElement('button');
+      editBtn.className = 'action-btn btn-edit';
+      editBtn.textContent = 'Postpone';
+      editBtn.onclick = function () {
+        postponeBooking(dateStr, tableId, index);
+      };
+
+      var delBtn = document.createElement('button');
+      delBtn.className = 'action-btn btn-delete';
+      delBtn.textContent = 'Delete';
+      delBtn.onclick = function () {
+        deleteBooking(dateStr, tableId, index);
+      };
+
+      actions.appendChild(editBtn);
+      actions.appendChild(delBtn);
+
+      header.appendChild(time);
+      header.appendChild(actions);
+
+      item.appendChild(header);
+
+      function addRow(label, val) {
+        var row = document.createElement('div');
+        row.className = 'booking-detail-row';
+        row.innerHTML = '<strong>' + label + ':</strong> ' + (val || '-');
+        item.appendChild(row);
+      }
+
+      addRow('Name', b.bookedBy);
+      addRow('Phone', b.phone);
+      addRow('Email', b.email);
+      addRow('People', b.people);
+      addRow('Diet', b.dietary);
+
+      content.appendChild(item);
+    });
+  }
+
+  function deleteBooking(dateStr, tableId, index) {
+    if (!confirm('Are you sure you want to delete this booking?')) return;
+
+    var daysBookings = bookings[dateStr];
+    if (daysBookings && daysBookings[tableId]) {
+      daysBookings[tableId].splice(index, 1);
+      renderBookingList(tableId, dateStr);
+      renderTables(dateStr); // Refresh grid view background
+    }
+  }
+
+  function postponeBooking(dateStr, tableId, index) {
+    var daysBookings = bookings[dateStr];
+    if (!daysBookings || !daysBookings[tableId]) return;
+
+    var booking = daysBookings[tableId][index];
+    var newTime = prompt("Enter new time (HH:MM):", booking.time);
+
+    if (newTime && newTime !== booking.time) {
+      // Check format roughly
+      if (!/^\d{2}:\d{2}$/.test(newTime)) {
+        alert("Invalid time format. Use HH:MM");
+        return;
+      }
+
+      // Check availability for new time
+      // We must temporarily remove the current booking to check if the new time works 
+      // (conceptually, though actually we check against *others*)
+      // Simplest: Check if new time fits with *other* bookings.
+
+      var otherBookings = daysBookings[tableId].filter((_, i) => i !== index);
+
+      if (isTimeSlotAvailable(otherBookings, newTime, booking.duration)) {
+        booking.time = newTime;
+        renderBookingList(tableId, dateStr);
+        renderTables(dateStr);
+        alert("Booking rescheduled to " + newTime);
+      } else {
+        alert("Time slot " + newTime + " is not available due to overlap.");
+      }
+    }
+  }
+
+  document.getElementById('closeDetailsBtn').addEventListener('click', function () {
+    document.getElementById('detailsOverlay').classList.remove('active');
+    document.getElementById('detailsPanel').classList.remove('active');
+  });
+
+  document.getElementById('detailsOverlay').addEventListener('click', function () {
+    document.getElementById('detailsOverlay').classList.remove('active');
+    document.getElementById('detailsPanel').classList.remove('active');
+  });
+
+  // Waitlist Buttons
+  document.getElementById('viewWaitlistBtn').addEventListener('click', function () {
+    document.getElementById('tablesGrid').style.display = 'none';
+    document.getElementById('waitlistView').style.display = 'block';
+    document.getElementById('viewWaitlistBtn').style.display = 'none';
+    document.getElementById('viewTablesBtn').style.display = 'block';
+    renderWaitlist(adminDateInput.value);
+  });
+
+  document.getElementById('viewTablesBtn').addEventListener('click', function () {
+    document.getElementById('tablesGrid').style.display = 'grid';
+    document.getElementById('waitlistView').style.display = 'none';
+    document.getElementById('viewWaitlistBtn').style.display = 'block';
+    document.getElementById('viewTablesBtn').style.display = 'none';
   });
 
 
