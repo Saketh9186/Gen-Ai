@@ -472,18 +472,28 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!window.getReservations) return;
     await syncDailyBookings();
 
-    var wList = waitlist[dateStr] || [];
+    // Ensure dateStr is in YYYY-MM-DD format to match syncDailyBookings dictionary keys
+    var searchDate = dateStr;
+    if (searchDate && searchDate.includes('-') && searchDate.split('-')[0].length === 2) {
+      const parts = searchDate.split('-');
+      searchDate = parts[2].length === 2
+        ? '20' + parts[2] + '-' + parts[1] + '-' + parts[0]
+        : parts[2] + '-' + parts[1] + '-' + parts[0];
+    }
+
+    var wList = waitlist[searchDate] || [];
     if (wList.length === 0) return;
 
     for (var i = 0; i < wList.length; i++) {
       var w = wList[i];
-      var allocRes = await allocateTable(parseInt(w.people, 10), w.name, dateStr, w.time, w);
+      var allocRes = await allocateTable(parseInt(w.people, 10), w.name, searchDate, w.time, w);
       if (allocRes.assignedTable) {
         w.status = 'confirmed';
         w.tableId = allocRes.assignedTable.id;
 
-        if (w.firebaseId && window.updateReservation) {
-          await window.updateReservation(w.firebaseId, { status: 'confirmed', tableId: w.tableId });
+        // Note: The raw Firebase document has 'id', not 'firebaseId'
+        if (w.id && window.updateReservation) {
+          await window.updateReservation(w.id, { status: 'confirmed', tableId: w.tableId });
         }
 
         if (typeof sendConfirmationEmail === 'function') {
@@ -491,7 +501,7 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         // Return after confirming one so we don't accidentally double book in the same sweep without resyncing
-        return await processWaitlist(dateStr);
+        return await processWaitlist(searchDate);
       }
     }
   }
@@ -1650,13 +1660,22 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!dateStr) dateStr = getFormattedDate();
     if (!timeStr) timeStr = "12:00";
 
+    // Normalize date string for internal bookings dict lookup (YYYY-MM-DD)
+    var searchDate = dateStr;
+    if (searchDate && searchDate.includes('-') && searchDate.split('-')[0].length === 2) {
+      const parts = searchDate.split('-');
+      searchDate = parts[2].length === 2
+        ? '20' + parts[2] + '-' + parts[1] + '-' + parts[0]
+        : parts[2] + '-' + parts[1] + '-' + parts[0];
+    }
+
     // Sync live from database first to avoid double bookings
     await syncDailyBookings();
 
-    if (!bookings[dateStr]) {
-      bookings[dateStr] = {};
+    if (!bookings[searchDate]) {
+      bookings[searchDate] = {};
     }
-    var daysBookings = bookings[dateStr];
+    var daysBookings = bookings[searchDate];
 
     // Check tables. Filter out those that are too small.
     var eligibleTables = tablesConfig.filter(t => t.seats >= people);
@@ -1706,8 +1725,8 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     // Refresh view if admin is looking at the same date
-    if (adminDateInput.value === dateStr) {
-      renderTables(dateStr);
+    if (adminDateInput.value === searchDate || adminDateInput.value === dateStr) {
+      renderTables(searchDate);
     }
 
     return { assignedTable, rejectReason };
